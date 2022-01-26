@@ -1,10 +1,9 @@
-# LoRaWAN_AT_Slave
+# SNW LoRa STM32
 
 This project uses sourcefiles provided by ST-Micro (found here: https://www.st.com/en/embedded-software/i-cube-lrwan.html)
-I did not alter any source-files just did a little restructuring.
-
 The compiled binary are ought to be used with a STM32L0 LoRa and Sigfox Discovery kit.
-After the binary is flashed, the provided UART of the ST-Link can be used to send AT-Commands. (Check the i-cube-lrwan documentation for more details)
+
+The project is used to perform several tests using LoRa to analyze how digital watermarks can be packed into the inter-packet delay of node which is periodically sending telemetry data.
 
 ## Usage
 
@@ -12,6 +11,8 @@ Be sure to have the stm32-cross-build container provided here: https://github.co
 
 To compile and build use `bash build.sh`.
 To flash use `bash flash.sh`. I saw that it might be necessary to hold the RESET button placed on the discovery board for it to work.
+
+## Other
 
 For completeness here is a shortend version of the readme that ST provides:
 
