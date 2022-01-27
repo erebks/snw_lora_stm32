@@ -51,7 +51,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define SNW_PACKET_PERIOD_MS ( 10 * 60 * 1000 )
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -110,6 +110,9 @@ static void OnRxTimerLedEvent(void *context);
   */
 static void OnJoinTimerLedEvent(void *context);
 
+
+static void OnSNWTimerEvent(void *context);
+
 /* USER CODE END PFP */
 
 /* Private variables ---------------------------------------------------------*/
@@ -156,6 +159,8 @@ static UTIL_TIMER_Object_t RxLedTimer;
   */
 static UTIL_TIMER_Object_t JoinLedTimer;
 
+static UTIL_TIMER_Object_t SNWTimer;
+
 /* USER CODE END PV */
 
 /* Exported functions ---------------------------------------------------------*/
@@ -194,9 +199,11 @@ void LoRaWAN_Init(void)
   UTIL_TIMER_Create(&TxLedTimer, 0xFFFFFFFFU, UTIL_TIMER_ONESHOT, OnTxTimerLedEvent, NULL);
   UTIL_TIMER_Create(&RxLedTimer, 0xFFFFFFFFU, UTIL_TIMER_ONESHOT, OnRxTimerLedEvent, NULL);
   UTIL_TIMER_Create(&JoinLedTimer, 0xFFFFFFFFU, UTIL_TIMER_PERIODIC, OnJoinTimerLedEvent, NULL);
+  UTIL_TIMER_Create(&SNWTimer, 0xFFFFFFFFU, UTIL_TIMER_PERIODIC, OnSNWTimerEvent, NULL);
   UTIL_TIMER_SetPeriod(&TxLedTimer, 500);
   UTIL_TIMER_SetPeriod(&RxLedTimer, 500);
   UTIL_TIMER_SetPeriod(&JoinLedTimer, 500);
+  UTIL_TIMER_SetPeriod(&SNWTimer, SNW_PACKET_PERIOD_MS);
 
   /* USER CODE END LoRaWAN_Init_1 */
 
@@ -217,6 +224,10 @@ void LoRaWAN_Init(void)
   APP_PPRINTF("ATtention command interface\r\n");
   APP_PPRINTF("AT? to list all available functions\r\n");
 
+  // Join network
+  LmHandlerJoin(ACTIVATION_TYPE_OTAA);
+
+  UTIL_TIMER_Start(&SNWTimer);
   /* USER CODE END LoRaWAN_Init_Last */
 }
 
@@ -315,6 +326,25 @@ static void OnMacProcessNotify(void)
   /* USER CODE BEGIN OnMacProcessNotify_2 */
 
   /* USER CODE END OnMacProcessNotify_2 */
+}
+
+static void OnSNWTimerEvent(void *context)
+{
+    LmHandlerMsgTypes_t isTxConfirmed = LORAMAC_HANDLER_UNCONFIRMED_MSG;
+    LmHandlerErrorStatus_t lmhStatus = LORAMAC_HANDLER_ERROR;
+    uint8_t payload[4] = {0x1, 0x2, 0x3, 0x4};
+    LmHandlerAppData_t AppData = { 0, 0, payload };
+    UTIL_TIMER_Time_t nextTxIn = 0;
+
+    uint32_t systime = SysTimeToMs(SysTimeGet());
+    payload[0] = (uint8_t) systime;
+    payload[1] = (uint8_t) (systime >> 8);
+    payload[2] = (uint8_t) (systime >> 16);
+    payload[3] = (uint8_t) (systime >> 24);
+
+    AppData.BufferSize = 4;
+    AppData.Port = 1;
+    LmHandlerSend(&AppData, isTxConfirmed, &nextTxIn, 0);
 }
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
