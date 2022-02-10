@@ -42,6 +42,8 @@
 /* External variables ---------------------------------------------------------*/
 /* USER CODE BEGIN EV */
 
+static uint32_t snwTimestamp = 0;
+
 /* USER CODE END EV */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -51,7 +53,13 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+
 #define SNW_PACKET_PERIOD_MS ( 10 * 60 * 1000 )
+#define SNW_KEY ( (uint32_t) 0xA5A5 )
+#define SNW_PHASE_DELTA_MS ( 10 * 1000 )
+#define SNW_DELAY_MIN_MS ( 0 )
+#define SNW_DELAY_MAX_MS ( 1 * 60 * 1000 )
+
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -110,8 +118,13 @@ static void OnRxTimerLedEvent(void *context);
   */
 static void OnJoinTimerLedEvent(void *context);
 
+static uint32_t calcWatermark(uint32_t oldData, uint32_t newData, uint32_t key);
+
+static uint32_t calcDelayMS(uint32_t oldDelay, uint8_t phase, uint32_t delta, uint32_t delayMin, uint32_t delayMax);
 
 static void OnSNWTimerEvent(void *context);
+
+static void OnSNWSendTimerEvent(void *context);
 
 /* USER CODE END PFP */
 
@@ -159,6 +172,8 @@ static UTIL_TIMER_Object_t RxLedTimer;
   */
 static UTIL_TIMER_Object_t JoinLedTimer;
 
+static UTIL_TIMER_Object_t SNWSendTimer;
+
 static UTIL_TIMER_Object_t SNWTimer;
 
 /* USER CODE END PV */
@@ -200,6 +215,8 @@ void LoRaWAN_Init(void)
   UTIL_TIMER_Create(&RxLedTimer, 0xFFFFFFFFU, UTIL_TIMER_ONESHOT, OnRxTimerLedEvent, NULL);
   UTIL_TIMER_Create(&JoinLedTimer, 0xFFFFFFFFU, UTIL_TIMER_PERIODIC, OnJoinTimerLedEvent, NULL);
   UTIL_TIMER_Create(&SNWTimer, 0xFFFFFFFFU, UTIL_TIMER_PERIODIC, OnSNWTimerEvent, NULL);
+  UTIL_TIMER_Create(&SNWSendTimer, 0xFFFFFFFFU, UTIL_TIMER_ONESHOT, OnSNWSendTimerEvent, NULL);
+
   UTIL_TIMER_SetPeriod(&TxLedTimer, 500);
   UTIL_TIMER_SetPeriod(&RxLedTimer, 500);
   UTIL_TIMER_SetPeriod(&JoinLedTimer, 500);
@@ -328,23 +345,87 @@ static void OnMacProcessNotify(void)
   /* USER CODE END OnMacProcessNotify_2 */
 }
 
-static void OnSNWTimerEvent(void *context)
+static uint32_t calcWatermark(uint32_t oldData, uint32_t newData, uint32_t key)
 {
-    LmHandlerMsgTypes_t isTxConfirmed = LORAMAC_HANDLER_UNCONFIRMED_MSG;
+    // "hash" function (XOR)
+    // First 13 bit are not chaning with timestamp as data
+    uint32_t reg = ( oldData >> 13 ) ^ ( newData >> 13 ) ^ key;
+
+    return reg;
+}
+
+static uint32_t calcDelayMS(uint32_t oldDelay, uint8_t phase, uint32_t delta, uint32_t delayMin, uint32_t delayMax)
+{
+    // Based on previous timestamp calc the next delta after the 10min
+    // timer
+    uint32_t delay = 0;
+
+    delay = oldDelay + (phase * delta);
+
+    if ( delay > delayMax)
+    {
+	delay = delayMin;
+    }
+
+    return delay;
+}
+
+static void OnSNWSendTimerEvent(void *context)
+{
     LmHandlerErrorStatus_t lmhStatus = LORAMAC_HANDLER_ERROR;
     uint8_t payload[4] = {0x1, 0x2, 0x3, 0x4};
     LmHandlerAppData_t AppData = { 0, 0, payload };
     UTIL_TIMER_Time_t nextTxIn = 0;
+    LmHandlerMsgTypes_t isTxConfirmed = LORAMAC_HANDLER_UNCONFIRMED_MSG;
 
-    uint32_t systime = SysTimeToMs(SysTimeGet());
-    payload[0] = (uint8_t) systime;
-    payload[1] = (uint8_t) (systime >> 8);
-    payload[2] = (uint8_t) (systime >> 16);
-    payload[3] = (uint8_t) (systime >> 24);
+    payload[0] = (uint8_t) snwTimestamp;
+    payload[1] = (uint8_t) (snwTimestamp >> 8);
+    payload[2] = (uint8_t) (snwTimestamp >> 16);
+    payload[3] = (uint8_t) (snwTimestamp >> 24);
 
     AppData.BufferSize = 4;
     AppData.Port = 1;
     LmHandlerSend(&AppData, isTxConfirmed, &nextTxIn, 0);
+
+    APP_PPRINTF("TS: %d sent! @%d\r\n", snwTimestamp, SysTimeToMs(SysTimeGet()));
+}
+
+static void OnSNWTimerEvent(void *context)
+{
+    static uint32_t oldTimestamp = 0;
+    static uint32_t oldDelay = 0;
+    static uint8_t oldPhase = 0;
+    uint32_t watermark = 0;
+    uint32_t delay = 0;
+    uint8_t phase = 0;
+
+    snwTimestamp = SysTimeToMs(SysTimeGet());
+    APP_PPRINTF("\r\n################\r\n");
+    APP_PPRINTF("SNW TIMER TS: %d\r\n", snwTimestamp);
+
+    // Calculate watermark, phase and delay
+    watermark = calcWatermark(oldTimestamp, snwTimestamp, SNW_KEY);
+    phase = ((oldPhase ^ (watermark & 0x1)) & 0x1);
+
+    delay = calcDelayMS(oldDelay, phase, SNW_PHASE_DELTA_MS, SNW_DELAY_MIN_MS, SNW_DELAY_MAX_MS);
+
+    APP_PPRINTF("Watermark: 0x%x (%x), Phase: %x, Delay: %d\r\n", watermark, watermark & 0x1, phase, delay);
+
+    if (delay == 0)
+    {
+	// Send right away
+	OnSNWSendTimerEvent( (void *) NULL );
+    }
+    else
+    {
+	// Set period and start timer
+	UTIL_TIMER_SetPeriod(&SNWSendTimer, delay);
+	UTIL_TIMER_Start(&SNWSendTimer);
+    }
+
+    oldTimestamp = snwTimestamp;
+    oldDelay = delay;
+    oldPhase = phase;
 }
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
