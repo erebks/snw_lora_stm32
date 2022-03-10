@@ -54,11 +54,11 @@ static uint32_t snwTimestamp = 0;
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-#define SNW_PACKET_PERIOD_MS ( 10 * 60 * 1000 )
+#define SNW_PACKET_PERIOD_MS ( 5 * 60 * 1000 )
 #define SNW_KEY ( (uint32_t) 0xA5A5 )
-#define SNW_PHASE_DELTA_MS ( 10 * 1000 )
+#define SNW_PHASE_DELTA_MS ( 50 )
 #define SNW_DELAY_MIN_MS ( 0 )
-#define SNW_DELAY_MAX_MS ( 1 * 60 * 1000 )
+#define SNW_DELAY_MAX_MS ( 10 * SNW_PHASE_DELTA_MS )
 
 /* USER CODE END PD */
 
