@@ -411,10 +411,12 @@ static void OnSNWTimerEvent(void *context)
 
     APP_PPRINTF("Watermark: 0x%x (%x), Phase: %x, Delay: %d\r\n", watermark, watermark & 0x1, phase, delay);
 
-    if (delay == 0)
+//    if (delay == 0)
+    if (1)
     {
 	// Send right away
-	OnSNWSendTimerEvent( (void *) NULL );
+	UTIL_TIMER_SetPeriod(&SNWSendTimer, 0);
+	UTIL_TIMER_Start(&SNWSendTimer);
     }
     else
     {
