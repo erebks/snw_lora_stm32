@@ -61,7 +61,7 @@ void Error_Handler(void);
 #define RTC_N_PREDIV_S 10
 #define RTC_PREDIV_S ((1<<RTC_N_PREDIV_S)-1)
 #define RTC_PREDIV_A ((1<<(15-RTC_N_PREDIV_S))-1)
-#define LPUART_BAUDRATE 9600
+#define LPUART_BAUDRATE 115200
 
 /* Pin mapping */
 
