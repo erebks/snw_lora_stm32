@@ -358,16 +358,26 @@ static uint32_t calcDelayMS(uint32_t oldDelay, uint8_t phase, uint32_t delta, ui
 {
     // Based on previous timestamp calc the next delta after the 10min
     // timer
-    uint32_t delay = 0;
+    int32_t delay = 0;
+    static int8_t direction = 1;
 
-    delay = oldDelay + (phase * delta);
+    delay = oldDelay + (direction * phase * delta);
 
-    if ( delay > delayMax)
+    if ( delay < (int32_t) delayMin )
     {
-	delay = delayMin;
+	// back to start -> increase delay from now on
+	direction = 1;
+	delay = oldDelay + (direction * phase * delta);
     }
 
-    return delay;
+    if ( delay > (int32_t) delayMax)
+    {
+	// at maximum delay -> decrease from now on
+	direction = -1;
+	delay = oldDelay + (direction * phase * delta);
+    }
+
+    return (uint32_t) delay;
 }
 
 static void OnSNWSendTimerEvent(void *context)
@@ -411,8 +421,7 @@ static void OnSNWTimerEvent(void *context)
 
     APP_PPRINTF("Watermark: 0x%x (%x), Phase: %x, Delay: %d\r\n", watermark, watermark & 0x1, phase, delay);
 
-//    if (delay == 0)
-    if (1)
+    if (delay == 0)
     {
 	// Send right away
 	UTIL_TIMER_SetPeriod(&SNWSendTimer, 0);
